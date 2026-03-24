@@ -1,43 +1,23 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import Callable
 
-from src.core.data_handler import DataHandler
-from src.core.engine import TradingEngine
+from src.envs.fx_gym_env import FxGymEnv
 from src.visualization.chart import Chart
 from src.visualization.controller import Controller
 
 
-@dataclass
-class ViewerState:
-    """Mutable state for replay position."""
-
-    current_step: int
-
-
 class Viewer:
-    """Composes data, engine, chart, and controller."""
+    """Debug viewer that operates as an env client via reset/step calls."""
 
     def __init__(
         self,
-        data_handler: DataHandler,
+        env: FxGymEnv,
         chart: Chart,
         controller: Controller | None,
-        engine: TradingEngine,
-        initial_step: int,
-        window_size: int,
     ) -> None:
-        if window_size <= 0:
-            raise ValueError("window_size must be > 0")
-
-        self._data_handler = data_handler
+        self._env = env
         self._chart = chart
-        self._engine = engine
-        self._window_size = window_size
-
-        max_index = len(self._data_handler) - 1
-        self._state = ViewerState(current_step=max(0, min(initial_step, max_index)))
 
         self._controller = controller or Controller(
             key_bindings=self._build_key_bindings(),
@@ -54,49 +34,35 @@ class Viewer:
         plt.show()
 
     def redraw(self) -> None:
-        visible_df, window_start = self._data_handler.get_visible_window(
-            self._state.current_step,
-            self._window_size,
-        )
-        current_price = self._data_handler.get_price(self._state.current_step)
-        status = self._engine.get_status(current_price=current_price)
+        frame = self._env.get_debug_frame()
         self._chart.render(
-            visible_df=visible_df,
-            current_step_global=self._state.current_step,
-            window_start_index=window_start,
-            status=status,
+            visible_ohlc=frame.ohlc_window,
+            visible_timestamps=frame.timestamps,
+            current_step_global=frame.current_step,
+            window_start_index=frame.window_start_index,
+            status=frame.status,
         )
 
     def _build_key_bindings(self) -> dict[str, Callable[[], None]]:
         return {
-            "right": self._step_forward,
-            "left": self._step_backward,
-            "home": self._jump_start,
-            "end": self._jump_end,
+            "right": self._hold_and_step,
+            "home": self._reset,
             "a": self._open_long,
             "z": self._open_short,
             "x": self._close_position,
         }
 
-    def _step_forward(self) -> None:
-        self._state.current_step = min(self._state.current_step + 1, len(self._data_handler) - 1)
+    def _hold_and_step(self) -> None:
+        self._env.step(self._env.ACTION_HOLD)
 
-    def _step_backward(self) -> None:
-        self._state.current_step = max(self._state.current_step - 1, 0)
-
-    def _jump_start(self) -> None:
-        self._state.current_step = 0
-
-    def _jump_end(self) -> None:
-        self._state.current_step = len(self._data_handler) - 1
+    def _reset(self) -> None:
+        self._env.reset()
 
     def _open_long(self) -> None:
-        price = self._data_handler.get_price(self._state.current_step)
-        self._engine.open_long(price)
+        self._env.step(self._env.ACTION_LONG)
 
     def _open_short(self) -> None:
-        price = self._data_handler.get_price(self._state.current_step)
-        self._engine.open_short(price)
+        self._env.step(self._env.ACTION_SHORT)
 
     def _close_position(self) -> None:
-        self._engine.close()
+        self._env.step(self._env.ACTION_CLOSE)

@@ -1,31 +1,28 @@
 # 問題点と改善提案
 
-## 現状の観察
-- 責務分離は概ね良好（`DataHandler`, `TradingEngine`, `Chart` に分かれている）。
-- `Viewer` が複数の責務（合成・UI制御）を持つ。
-- `ConfigLoader._resolve_csv_path` のベースパス決定がハードコーディング気味。
-- `Chart` と `DataHandler` が `pandas.DataFrame` を直接やり取りしているため、描画テストがやや難しい。
+## 実施済みの改善
+- 主従関係を修正: FxGymEnv を中核にし、Viewer は env.step(action) を呼ぶデバッグクライアント化。
+- Gymnasium互換追加: src/envs/fx_gym_env.py を実装し、reset/step/action_space/observation_space を提供。
+- 性能改善: DataHandler はロード時に NumPy 配列へ変換し、ステップ中は高速な配列アクセス。
+- プラグイン機構追加: src/core/features.py と src/core/rewards.py を導入。
 
-## 改善提案（優先順）
+## 残課題（次の改善候補）
 
-- 1) `Controller` を外部注入に完全に切り替える
-  - 理由: テスト性とカスタムキーバインドの容易化。
-  - 変更点: `Viewer` のコンストラクタで `controller` を必須または明示的に提供させる。
+- 1) 取引コストモデルの導入
+  - spread, commission, slippage を RewardFunction に統合する。
 
-- 2) 描画インターフェースの抽象化
-  - 理由: `Chart.render()` に渡す型を DTO（例: Candle[]）にすることで、`pandas` 依存を描画層に閉じ込める。
+- 2) 観測量の拡張
+  - OHLC以外にテクニカル指標やボラティリティ特徴を FeatureExtractor へ追加する。
 
-- 3) 設定パス解決の改善
-  - 理由: `parents[2]` の依存は配置変更で壊れる。
-  - 変更点: 環境変数やプロジェクトルート検出ルールを採用する。
+- 3) 早期終了条件の追加
+  - ドローダウン閾値や証拠金不足を terminated 条件として扱う。
 
-- 4) `TradingEngine` のイベントフック導入
-  - 理由: 将来的な戦略プラグインやログ、UI 更新を容易にするため。
+- 4) 自動テストの強化
+  - Envの reset/step 契約、Observation shape/dtype、Reward の境界条件をテスト化。
 
-## 実装チェックリスト（小さなステップ）
-- [ ] `Viewer` の `controller` を外部注入に移行
-- [ ] `Chart` の入出力インターフェースを DTO に変更し、`pandas` は `DataHandler` 側でのみ扱う
-- [ ] `ConfigLoader` のベースパス検出をリファクタ
-- [ ] `TradingEngine` にイベントコールバックを追加
-
-必要なら、これら改善のパッチを作成します。どれを優先しますか？
+## 実装チェックリスト（現時点）
+- [x] Gymnasium互換 env を追加
+- [x] Feature/Reward プラグイン機構を追加
+- [x] DataHandler を NumPy中心へ改修
+- [x] Viewer を Env駆動デバッグ化
+- [ ] テストコード整備（次フェーズ）
