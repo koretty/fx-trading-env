@@ -20,7 +20,7 @@ from src.visualization.viewer import Viewer
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="FX Gymnasium environment runner")
-    parser.add_argument("--config", type=str, default=None, help="Path to JSON config file")
+    parser.add_argument("--config", type=str, default=None, help="Path to YAML/JSON config file")
     parser.add_argument("--csv", type=str, default=None, help="Path to OHLC CSV file")
     parser.add_argument("--window-size", type=int, default=None, help="Visible candle count")
     parser.add_argument("--initial-step", type=int, default=None, help="Initial replay step")

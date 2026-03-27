@@ -19,7 +19,7 @@ class EnvDebugFrame:
     timestamps: np.ndarray
     current_step: int
     window_start_index: int
-    status: dict[str, float | str | None]
+    status: dict[str, float | str | bool | None]
 
 
 class FxGymEnv(gym.Env[np.ndarray, int]):
@@ -76,7 +76,7 @@ class FxGymEnv(gym.Env[np.ndarray, int]):
     ) -> tuple[np.ndarray, dict[str, Any]]:
         super().reset(seed=seed)
 
-        self._engine.close()
+        self._engine.reset_account()
         self._reward_function.reset()
         self._episode_elapsed_steps = 0
 
@@ -100,8 +100,8 @@ class FxGymEnv(gym.Env[np.ndarray, int]):
 
         self._apply_action(action=action, price=price_before)
 
-        terminated = self._current_step >= len(self._data_handler) - 1
-        if not terminated:
+        terminated_by_end = self._current_step >= len(self._data_handler) - 1
+        if not terminated_by_end:
             self._current_step += 1
 
         self._episode_elapsed_steps += 1
@@ -112,6 +112,8 @@ class FxGymEnv(gym.Env[np.ndarray, int]):
 
         price_after = self._data_handler.get_price(self._current_step)
         next_unrealized = self._engine.unrealized_pnl(price_after)
+        terminated_by_margin_call = self._engine.is_margin_call(price_after)
+        terminated = terminated_by_end or terminated_by_margin_call
 
         reward = self._reward_function.compute(
             prev_unrealized=prev_unrealized,
@@ -161,7 +163,7 @@ class FxGymEnv(gym.Env[np.ndarray, int]):
             return
 
         if action == self.ACTION_CLOSE:
-            self._engine.close()
+            self._engine.close(price=price)
             return
 
     def _build_observation(self) -> np.ndarray:
@@ -181,8 +183,14 @@ class FxGymEnv(gym.Env[np.ndarray, int]):
             "action": int(action),
             "price": float(price),
             "position_side": str(position.side.value),
+            "entry_mid_price": None if position.entry_mid_price is None else float(position.entry_mid_price),
             "entry_price": None if position.entry_price is None else float(position.entry_price),
+            "spread": float(self._engine.spread),
+            "balance": float(self._engine.balance),
+            "last_realized_pnl": float(self._engine.last_realized_pnl),
             "unrealized_pnl": float(self._engine.unrealized_pnl(price)),
+            "maintenance_margin_ratio": float(self._engine.maintenance_margin_ratio(price)),
+            "is_margin_call": bool(self._engine.is_margin_call(price)),
             "episode_elapsed_steps": self._episode_elapsed_steps,
             "episode_start_step": self._episode_start_step,
         }

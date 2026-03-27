@@ -35,7 +35,7 @@ class OHLCWindowFeature:
         if self.window_size <= 0:
             raise ValueError("window_size must be > 0")
 
-        obs_dim = self.window_size * 4 + 2
+        obs_dim = self.window_size * 4 + 4
         object.__setattr__(
             self,
             "_observation_space",
@@ -78,6 +78,13 @@ class OHLCWindowFeature:
 
         current_price = data_handler.get_price(current_step)
         unrealized = np.float32(engine.unrealized_pnl(current_price))
+        spread = np.float32(engine.spread)
+        margin_ratio = engine.maintenance_margin_ratio(current_price)
+        if np.isinf(margin_ratio):
+            margin_signal = np.float32(1.0)
+        else:
+            # Ratio >= 100 is generally safe; clip to keep the scale bounded.
+            margin_signal = np.float32(np.clip((margin_ratio / 100.0) - 1.0, -5.0, 5.0))
 
-        context = np.array([np.float32(side_value), unrealized], dtype=np.float32)
+        context = np.array([np.float32(side_value), unrealized, spread, margin_signal], dtype=np.float32)
         return np.concatenate((flat, context), axis=0)

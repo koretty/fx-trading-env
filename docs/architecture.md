@@ -7,9 +7,9 @@
 - src.main: エントリポイント。CLI解析、設定読み込み、FxGymEnv の組立て、必要に応じてデバッグViewer起動。
 - src.utils.config_loader: AppConfig と設定読み込みロジック（YAML/JSON + CLI優先解決）。
 - src.core.data_handler: CSV読み込み・正規化。読み込み時に NumPy 配列へ変換して高速アクセスAPIを提供。`get_ohlc_window` は範囲外stepで例外を送出し未来参照を禁止。
-- src.core.engine: ポジション状態管理と uPnL 計算（純粋な取引ロジック）。
-- src.core.features: Observation 生成プラグイン群（FeatureExtractor）。
-- src.core.rewards: 報酬計算プラグイン群（RewardFunction）。
+- src.core.engine: ポジション状態管理、スプレッド考慮の約定、uPnL/実現損益、証拠金維持率判定。
+- src.core.features: Observation 生成プラグイン群（FeatureExtractor）。OHLC窓 + 口座/ポジション文脈を生成。
+- src.core.rewards: 報酬計算プラグイン群（RewardFunction）。PnL差分ベースで報酬を算出。
 - src.envs.fx_gym_env: Gymnasium互換環境。reset/step/action_space/observation_space を提供。
 - src.visualization.chart: デバッグ描画のみ（NumPy入力）。
 - src.visualization.controller: キー入力を環境アクションへマッピング。
@@ -49,9 +49,11 @@ classDiagram
     class TradingEngine {
         +open_long(price, units)
         +open_short(price, units)
-        +close()
+        +close(price)
         +get_status(current_price)
         +unrealized_pnl(current_price)
+        +maintenance_margin_ratio(current_price)
+        +is_margin_call(current_price)
     }
 
     class FeatureExtractor {
@@ -100,3 +102,7 @@ classDiagram
     src.main ..> FxGymEnv : instantiates
     src.main ..> Viewer : optional debug
 ```
+
+補足:
+- `TradingEngine` は mid価格入力から bid/ask を導出し、スプレッドを内包した約定価格で評価します。
+- `FxGymEnv.step()` ではデータ末尾到達に加え、`is_margin_call` が `True` の場合も終了条件として扱います。

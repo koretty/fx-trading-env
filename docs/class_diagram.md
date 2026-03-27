@@ -15,9 +15,11 @@ classDiagram
     class TradingEngine {
         +open_long(price, units)
         +open_short(price, units)
-        +close()
+        +close(price)
         +get_status(current_price)
         +unrealized_pnl(current_price)
+        +maintenance_margin_ratio(current_price)
+        +is_margin_call(current_price)
     }
 
     class FeatureExtractor {
