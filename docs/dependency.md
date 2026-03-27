@@ -27,11 +27,13 @@ graph TD
     pandas["pandas"]
     matplotlib["matplotlib"]
     numpy["numpy"]
+    pyyaml["PyYAML (optional for YAML config)"]
 
     env_fx --> gymnasium
     core_features --> gymnasium
     core_data_handler --> pandas
     core_data_handler --> numpy
+    config_loader --> pyyaml
     visualization_chart --> pandas
     visualization_chart --> numpy
     visualization_chart --> matplotlib
