@@ -90,18 +90,25 @@ class DataHandler:
     def get_price(self, step: int) -> float:
         if self._close is None:
             raise RuntimeError("Data is not loaded. Call load() first.")
-        return float(self._close[self._clamp_step(step)])
+        return float(self._close[self._validate_step(step)])
 
     def get_ohlc_row(self, step: int) -> np.ndarray:
-        return self.ohlc[self._clamp_step(step)]
+        return self.ohlc[self._validate_step(step)]
 
     def get_ohlc_window(self, current_step: int, window_size: int, pad: bool = False) -> tuple[np.ndarray, int]:
         if window_size <= 0:
             raise ValueError("window_size must be > 0")
 
-        current_step = self._clamp_step(current_step)
+        current_step = self._validate_step(current_step)
         start = max(0, current_step - window_size + 1)
-        visible = self.ohlc[start : current_step + 1]
+        stop = current_step + 1
+        if stop > len(self.ohlc):
+            raise IndexError(
+                f"Requested stop index {stop} exceeds dataset length {len(self.ohlc)}. "
+                "Future data access is blocked to prevent lookahead bias."
+            )
+
+        visible = self.ohlc[start:stop]
 
         if not pad or len(visible) == window_size:
             return visible, start
@@ -114,7 +121,7 @@ class DataHandler:
         if window_size <= 0:
             raise ValueError("window_size must be > 0")
 
-        current_step = self._clamp_step(current_step)
+        current_step = self._validate_step(current_step)
         start = max(0, current_step - window_size + 1)
         visible = self.timestamps[start : current_step + 1]
 
@@ -129,12 +136,21 @@ class DataHandler:
         if window_size <= 0:
             raise ValueError("window_size must be > 0")
 
-        current_step = self._clamp_step(current_step)
+        current_step = self._validate_step(current_step)
         start = max(0, current_step - window_size + 1)
         visible = self.data.iloc[start : current_step + 1].copy()
         return visible, start
 
-    def _clamp_step(self, step: int) -> int:
+    def _validate_step(self, step: int) -> int:
         if len(self.ohlc) == 0:
             raise ValueError("Loaded dataset is empty")
-        return max(0, min(int(step), len(self.ohlc) - 1))
+
+        checked = int(step)
+        if checked < 0:
+            raise IndexError(f"step must be >= 0: got {checked}")
+        if checked >= len(self.ohlc):
+            raise IndexError(
+                f"step {checked} is out of range for dataset length {len(self.ohlc)}. "
+                "Future data access is blocked to prevent lookahead bias."
+            )
+        return checked

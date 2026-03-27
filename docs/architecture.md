@@ -5,8 +5,8 @@
 ## モジュール一覧と役割
 
 - src.main: エントリポイント。CLI解析、設定読み込み、FxGymEnv の組立て、必要に応じてデバッグViewer起動。
-- src.utils.config_loader: AppConfig と設定読み込みロジック（JSON/CLI優先解決）。
-- src.core.data_handler: CSV読み込み・正規化。読み込み時に NumPy 配列へ変換して高速アクセスAPIを提供。
+- src.utils.config_loader: AppConfig と設定読み込みロジック（YAML/JSON + CLI優先解決）。
+- src.core.data_handler: CSV読み込み・正規化。読み込み時に NumPy 配列へ変換して高速アクセスAPIを提供。`get_ohlc_window` は範囲外stepで例外を送出し未来参照を禁止。
 - src.core.engine: ポジション状態管理と uPnL 計算（純粋な取引ロジック）。
 - src.core.features: Observation 生成プラグイン群（FeatureExtractor）。
 - src.core.rewards: 報酬計算プラグイン群（RewardFunction）。
