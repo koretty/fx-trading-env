@@ -5,7 +5,6 @@
 ```mermaid
 graph TD
     main["src.main"] --> config_loader["src.utils.config_loader"]
-    main --> core_data_handler["src.core.data_handler"]
     main --> env_fx["src.envs.fx_gym_env"]
     main --> visualization_chart["src.visualization.chart"]
     main --> visualization_viewer["src.visualization.viewer"]

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 import gymnasium as gym  # type: ignore[reportMissingImports]
@@ -34,7 +35,9 @@ class FxGymEnv(gym.Env[np.ndarray, int]):
 
     def __init__(
         self,
-        data_handler: DataHandler,
+        csv_path: str | Path | None = None,
+        data_handler: DataHandler | None = None,
+        engine: TradingEngine | None = None,
         window_size: int = 120,
         feature_extractor: FeatureExtractor | None = None,
         reward_function: RewardFunction | None = None,
@@ -43,8 +46,22 @@ class FxGymEnv(gym.Env[np.ndarray, int]):
         if window_size <= 0:
             raise ValueError("window_size must be > 0")
 
-        self._data_handler = data_handler
+        if data_handler is None:
+            if csv_path is None:
+                raise ValueError("Either csv_path or data_handler must be provided")
+            created_data_handler = DataHandler(csv_path)
+            created_data_handler.load()
+            self._data_handler = created_data_handler
+        else:
+            self._data_handler = data_handler
+            try:
+                len(self._data_handler)
+            except RuntimeError:
+                self._data_handler.load()
+
         self._window_size = int(window_size)
+
+        self._engine = engine or TradingEngine()
         self._feature_extractor = feature_extractor or OHLCWindowFeature(window_size=self._window_size)
         self._reward_function = reward_function or PnLDeltaReward()
 
@@ -54,7 +71,6 @@ class FxGymEnv(gym.Env[np.ndarray, int]):
         self.action_space = spaces.Discrete(4)
         self.observation_space = self._feature_extractor.observation_space
 
-        self._engine = TradingEngine()
         self._current_step = self._window_size - 1
         self._episode_start_step = self._window_size - 1
         self._episode_elapsed_steps = 0

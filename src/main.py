@@ -11,7 +11,6 @@ if __package__ is None or __package__ == "":
     if str(project_root) not in sys.path:
         sys.path.insert(0, str(project_root))
 
-from src.core.data_handler import DataHandler
 from src.envs.fx_gym_env import FxGymEnv
 from src.utils.config_loader import ConfigLoader
 from src.visualization.chart import Chart
@@ -50,11 +49,8 @@ def main() -> None:
         initial_step_override=args.initial_step,
     )
 
-    data_handler = DataHandler(config.csv_path)
-    data_handler.load()
-
     env = FxGymEnv(
-        data_handler=data_handler,
+        csv_path=config.csv_path,
         window_size=config.window_size,
     )
 
@@ -75,7 +71,7 @@ def main() -> None:
         chart=chart,
         controller=None,
     )
-    env.reset(options={"start_step": min(config.initial_step, len(data_handler) - 1)})
+    env.reset(options={"start_step": config.initial_step})
     viewer.start()
 
 

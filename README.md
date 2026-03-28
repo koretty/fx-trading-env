@@ -5,6 +5,7 @@ Gymnasium互換のFXトレーディング環境と、手動デバッグ用ビュ
 ## 主な機能
 
 - Gymnasium API  に準拠した環境
+- FxGymEnvの`__init__`で Engine / Feature / Reward / DataHandler を組み立て可能（デフォルト構成）
 - OHLC CSVを読み込む高速データハンドラ（NumPy配列へ前処理）
 - `get_ohlc_window(step, ...)` で未来参照を禁止し、範囲外step時は例外を送出
 - ポジション状態（LONG/SHORT/FLAT）、スプレッド考慮の約定、uPnL/実現損益計算

@@ -45,6 +45,7 @@ classDiagram
     }
 
     class FxGymEnv {
+        +__init__(csv_path, data_handler, engine, feature_extractor, reward_function, ...)
         +reset(seed, options)
         +step(action)
         +render()
