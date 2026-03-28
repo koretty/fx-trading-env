@@ -4,13 +4,13 @@
 
 ## モジュール一覧と役割
 
-- src.main: エントリポイント。CLI解析、設定読み込み、FxGymEnv の組立て、必要に応じてデバッグViewer起動。
+- src.main: エントリポイント。CLI解析、設定読み込み、FxGymEnv の組立て（csv_pathを渡して内部パーツを初期化）、必要に応じてデバッグViewer起動。
 - src.utils.config_loader: AppConfig と設定読み込みロジック（YAML/JSON + CLI優先解決）。
 - src.core.data_handler: CSV読み込み・正規化。読み込み時に NumPy 配列へ変換して高速アクセスAPIを提供。`get_ohlc_window` は範囲外stepで例外を送出し未来参照を禁止。
 - src.core.engine: ポジション状態管理、スプレッド考慮の約定、uPnL/実現損益、証拠金維持率判定。
 - src.core.features: Observation 生成プラグイン群（FeatureExtractor）。OHLC窓 + 口座/ポジション文脈を生成。
 - src.core.rewards: 報酬計算プラグイン群（RewardFunction）。PnL差分ベースで報酬を算出。
-- src.envs.fx_gym_env: Gymnasium互換環境。reset/step/action_space/observation_space を提供。
+- src.envs.fx_gym_env: Gymnasium互換環境。`__init__`で Engine / Feature / Reward / DataHandler を初期化し、reset/step/action_space/observation_space を提供。
 - src.visualization.chart: デバッグ描画のみ（NumPy入力）。
 - src.visualization.controller: キー入力を環境アクションへマッピング。
 - src.visualization.viewer: Env クライアント。キー操作時に env.step(action) を呼ぶデバッグUI。
@@ -99,7 +99,7 @@ classDiagram
     Viewer --> FxGymEnv : client calls step/reset
     Viewer --> Chart : uses
     Viewer --> Controller : uses
-    src.main ..> FxGymEnv : instantiates
+    src.main ..> FxGymEnv : instantiates (with csv_path)
     src.main ..> Viewer : optional debug
 ```
 

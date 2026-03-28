@@ -3,7 +3,7 @@
 データの流れ（入力 → 学習ループ → 出力）を示します。
 
 - 入力: CSV（OHLC）
-- 前処理: DataHandler.load() が CSV を読み込み、NumPy配列へ正規化
+- 前処理: FxGymEnv.__init__ から DataHandler を生成し、DataHandler.load() で CSV を読み込み、NumPy配列へ正規化
 - 安全制約: DataHandler.get_ohlc_window(step, ...) は step 範囲外アクセス時に IndexError を送出し、未来データ参照を禁止
 - 実行主体: RLエージェントが env.step(action) を呼ぶ
 - 取引評価: TradingEngine がスプレッドを考慮して uPnL/実現損益・証拠金維持率を算出
@@ -15,11 +15,12 @@
 graph TD
     A[CLI / main] -->|load config| B[ConfigLoader]
     B -->|AppConfig(csv_path, window_size, initial_step)| A
-    A -->|csv_path| C[DataHandler]
+    A -->|csv_path| D[FxGymEnv]
+    D -->|construct/load| C[DataHandler]
     C -->|load CSV once| C
     C -->|build NumPy arrays| C
 
-    A -->|construct| D[FxGymEnv]
+    A -->|construct| D
     D -->|uses| E[FeatureExtractor]
     D -->|uses| F[RewardFunction]
     D -->|uses| G[TradingEngine]
