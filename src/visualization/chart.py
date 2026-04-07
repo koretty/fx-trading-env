@@ -141,7 +141,7 @@ class Chart:
             f"entry={entry_text}  "
             f"uPnL={float(status.get('unrealized_pnl', 0.0)):.5f}"
         )
-        hint = "Keys: Right=hold/step, A=long+step, Z=short+step, X=close+step, Home=reset"
+        hint = "Keys: Right=hold/step, Space=auto hold(1s toggle), A=long+step, Z=short+step, X=close+step, Home=reset"
 
         self._ax_info.text(0.01, 0.62, info, fontsize=10, va="center", ha="left")
         self._ax_info.text(0.01, 0.18, hint, fontsize=9, va="center", ha="left", color="#444444")
