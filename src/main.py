@@ -57,12 +57,24 @@ def main() -> None:
     if args.mode == "headless":
         _, _ = env.reset(options={"start_step": config.initial_step})
         total_reward = 0.0
+        last_info: dict[str, object] = {}
         for _ in range(max(1, args.steps)):
-            _, reward, terminated, truncated, _ = env.step(env.ACTION_HOLD)
+            _, reward, terminated, truncated, info = env.step(env.ACTION_HOLD)
             total_reward += reward
+            last_info = info
             if terminated or truncated:
                 break
-        print(f"headless finished: step={env.current_step}, total_reward={total_reward:.6f}")
+
+        print(
+            "headless finished: "
+            f"step={env.current_step}, "
+            f"total_reward={total_reward:.6f}, "
+            f"closed_trades={int(last_info.get('closed_trades', 0))}, "
+            f"win_rate={float(last_info.get('win_rate', 0.0)):.2f}%, "
+            f"max_dd={float(last_info.get('episode_max_drawdown', 0.0)):.6f}, "
+            f"max_dd_pct={float(last_info.get('episode_max_drawdown_pct', 0.0)):.4f}%, "
+            f"equity={float(last_info.get('equity', 0.0)):.2f}"
+        )
         return
 
     chart = Chart()

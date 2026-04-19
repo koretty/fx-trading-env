@@ -20,7 +20,7 @@ class EnvDebugFrame:
     timestamps: np.ndarray
     current_step: int
     window_start_index: int
-    status: dict[str, float | str | bool | None]
+    status: dict[str, float | int | str | bool | None]
 
 
 class FxGymEnv(gym.Env[np.ndarray, int]):
@@ -75,6 +75,9 @@ class FxGymEnv(gym.Env[np.ndarray, int]):
         self._episode_start_step = self._window_size - 1
         self._episode_elapsed_steps = 0
         self._max_episode_steps = max_episode_steps
+        self._episode_total_reward = 0.0
+        self._episode_peak_equity = float(self._engine.balance)
+        self._episode_max_drawdown = 0.0
 
     @property
     def current_step(self) -> int:
@@ -102,6 +105,12 @@ class FxGymEnv(gym.Env[np.ndarray, int]):
 
         self._current_step = max(self._window_size - 1, min(requested_step, len(self._data_handler) - 1))
         self._episode_start_step = self._current_step
+        self._episode_total_reward = 0.0
+
+        reset_price = self._data_handler.get_price(self._current_step)
+        reset_equity = self._current_equity(reset_price)
+        self._episode_peak_equity = reset_equity
+        self._episode_max_drawdown = 0.0
 
         obs = self._build_observation()
         info = self._build_info(action=self.ACTION_HOLD)
@@ -138,6 +147,8 @@ class FxGymEnv(gym.Env[np.ndarray, int]):
             terminated=terminated,
             truncated=truncated,
         )
+        self._episode_total_reward += float(reward)
+        self._update_drawdown(self._current_equity(price_after))
 
         obs = self._build_observation()
         info = self._build_info(action=action)
@@ -157,7 +168,9 @@ class FxGymEnv(gym.Env[np.ndarray, int]):
             window_size=self._window_size,
             pad=False,
         )
-        status = self._engine.get_status(current_price=self._data_handler.get_price(self._current_step))
+        current_price = self._data_handler.get_price(self._current_step)
+        status = self._engine.get_status(current_price=current_price)
+        status.update(self._build_indicator_snapshot(current_price=current_price))
         return EnvDebugFrame(
             ohlc_window=ohlc_window,
             timestamps=timestamps,
@@ -194,6 +207,7 @@ class FxGymEnv(gym.Env[np.ndarray, int]):
     def _build_info(self, action: int) -> dict[str, Any]:
         price = self._data_handler.get_price(self._current_step)
         position = self._engine.get_position()
+        indicators = self._build_indicator_snapshot(current_price=price)
         return {
             "current_step": self._current_step,
             "action": int(action),
@@ -209,7 +223,38 @@ class FxGymEnv(gym.Env[np.ndarray, int]):
             "is_margin_call": bool(self._engine.is_margin_call(price)),
             "episode_elapsed_steps": self._episode_elapsed_steps,
             "episode_start_step": self._episode_start_step,
+            **indicators,
         }
 
     def get_engine_position_side(self) -> PositionSide:
         return self._engine.get_position().side
+
+    def _build_indicator_snapshot(self, current_price: float) -> dict[str, float | int]:
+        return {
+            "equity": float(self._current_equity(current_price)),
+            "episode_total_reward": float(self._episode_total_reward),
+            "episode_peak_equity": float(self._episode_peak_equity),
+            "episode_max_drawdown": float(self._episode_max_drawdown),
+            "episode_max_drawdown_pct": float(self._episode_max_drawdown_pct()),
+            "closed_trades": int(self._engine.closed_trades),
+            "winning_trades": int(self._engine.winning_trades),
+            "losing_trades": int(self._engine.losing_trades),
+            "win_rate": float(self._engine.win_rate),
+            "total_realized_pnl": float(self._engine.total_realized_pnl),
+        }
+
+    def _current_equity(self, current_price: float) -> float:
+        return float(self._engine.balance + self._engine.unrealized_pnl(current_price))
+
+    def _update_drawdown(self, current_equity: float) -> None:
+        if current_equity > self._episode_peak_equity:
+            self._episode_peak_equity = float(current_equity)
+
+        drawdown = float(self._episode_peak_equity - current_equity)
+        if drawdown > self._episode_max_drawdown:
+            self._episode_max_drawdown = drawdown
+
+    def _episode_max_drawdown_pct(self) -> float:
+        if self._episode_peak_equity <= 0.0:
+            return 0.0
+        return (self._episode_max_drawdown / self._episode_peak_equity) * 100.0
