@@ -132,8 +132,16 @@ class Chart:
         current_price = float(current_row[3])
         entry = status.get("entry_price")
         entry_text = "-" if entry is None else f"{float(entry):.5f}"
+        closed_trades = int(status.get("closed_trades", 0))
+        winning_trades = int(status.get("winning_trades", 0))
+        win_rate = float(status.get("win_rate", 0.0))
+        max_drawdown = float(status.get("episode_max_drawdown", 0.0))
+        max_drawdown_pct = float(status.get("episode_max_drawdown_pct", 0.0))
+        total_realized = float(status.get("total_realized_pnl", 0.0))
+        equity = float(status.get("equity", status.get("balance", 0.0)))
+        episode_total_reward = float(status.get("episode_total_reward", 0.0))
 
-        info = (
+        price_info = (
             f"step={current_step}  "
             f"time={current_timestamp}  "
             f"close={current_price:.5f}  "
@@ -141,7 +149,18 @@ class Chart:
             f"entry={entry_text}  "
             f"uPnL={float(status.get('unrealized_pnl', 0.0)):.5f}"
         )
+        account_info = (
+            f"balance={float(status.get('balance', 0.0)):.2f}  "
+            f"equity={equity:.2f}  "
+            f"realized_total={total_realized:.5f}  "
+            f"trades={closed_trades}  "
+            f"wins={winning_trades}  "
+            f"win_rate={win_rate:.1f}%  "
+            f"maxDD={max_drawdown:.2f}({max_drawdown_pct:.2f}%)  "
+            f"ep_reward={episode_total_reward:.5f}"
+        )
         hint = "Keys: Right=hold/step, Space=auto hold(1s toggle), A=long+step, Z=short+step, X=close+step, Home=reset"
 
-        self._ax_info.text(0.01, 0.62, info, fontsize=10, va="center", ha="left")
-        self._ax_info.text(0.01, 0.18, hint, fontsize=9, va="center", ha="left", color="#444444")
+        self._ax_info.text(0.01, 0.78, price_info, fontsize=10, va="center", ha="left")
+        self._ax_info.text(0.01, 0.46, account_info, fontsize=9.5, va="center", ha="left")
+        self._ax_info.text(0.01, 0.14, hint, fontsize=9, va="center", ha="left", color="#444444")

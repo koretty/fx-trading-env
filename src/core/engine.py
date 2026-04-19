@@ -53,6 +53,10 @@ class TradingEngine:
         self._initial_balance = float(initial_balance)
         self._maintenance_margin_threshold = float(maintenance_margin_threshold)
         self._last_realized_pnl = 0.0
+        self._total_realized_pnl = 0.0
+        self._closed_trades = 0
+        self._winning_trades = 0
+        self._losing_trades = 0
 
     def open_long(self, price: float, units: float = 1.0) -> None:
         checked_price = self._validate_price(price)
@@ -80,9 +84,16 @@ class TradingEngine:
 
     def close(self, price: float | None = None) -> float:
         realized = 0.0
-        if self._position.side != PositionSide.FLAT and price is not None:
+        has_open_position = self._position.side != PositionSide.FLAT
+        if has_open_position and price is not None:
             realized = self.unrealized_pnl(price)
             self._balance += realized
+            self._total_realized_pnl += realized
+            self._closed_trades += 1
+            if realized > 0.0:
+                self._winning_trades += 1
+            elif realized < 0.0:
+                self._losing_trades += 1
 
         self._last_realized_pnl = float(realized)
         self._position = PositionState()
@@ -92,6 +103,10 @@ class TradingEngine:
         self._position = PositionState()
         self._balance = float(self._initial_balance)
         self._last_realized_pnl = 0.0
+        self._total_realized_pnl = 0.0
+        self._closed_trades = 0
+        self._winning_trades = 0
+        self._losing_trades = 0
 
     def get_position(self) -> PositionState:
         return self._position
@@ -107,6 +122,28 @@ class TradingEngine:
     @property
     def last_realized_pnl(self) -> float:
         return self._last_realized_pnl
+
+    @property
+    def total_realized_pnl(self) -> float:
+        return self._total_realized_pnl
+
+    @property
+    def closed_trades(self) -> int:
+        return self._closed_trades
+
+    @property
+    def winning_trades(self) -> int:
+        return self._winning_trades
+
+    @property
+    def losing_trades(self) -> int:
+        return self._losing_trades
+
+    @property
+    def win_rate(self) -> float:
+        if self._closed_trades == 0:
+            return 0.0
+        return (self._winning_trades / self._closed_trades) * 100.0
 
     def unrealized_pnl(self, current_price: float) -> float:
         checked_price = self._validate_price(current_price)
@@ -141,7 +178,7 @@ class TradingEngine:
             return False
         return self.maintenance_margin_ratio(current_price) < self._maintenance_margin_threshold
 
-    def get_status(self, current_price: float) -> dict[str, float | str | bool | None]:
+    def get_status(self, current_price: float) -> dict[str, float | int | str | bool | None]:
         position = self.get_position()
         margin_ratio = self.maintenance_margin_ratio(current_price)
         return {
@@ -152,10 +189,15 @@ class TradingEngine:
             "spread": self._spread,
             "balance": self._balance,
             "last_realized_pnl": self._last_realized_pnl,
+            "total_realized_pnl": self._total_realized_pnl,
             "unrealized_pnl": self.unrealized_pnl(current_price),
             "used_margin": self.used_margin(),
             "maintenance_margin_ratio": margin_ratio,
             "is_margin_call": self.is_margin_call(current_price),
+            "closed_trades": self._closed_trades,
+            "winning_trades": self._winning_trades,
+            "losing_trades": self._losing_trades,
+            "win_rate": self.win_rate,
         }
 
     def _ask(self, mid_price: float) -> float:
