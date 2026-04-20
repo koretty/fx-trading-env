@@ -1,39 +1,60 @@
-# 問題点と改善提案
+# 改善提案（2026-04-21時点）
 
-## 実施済みの改善
-- 主従関係を修正: FxGymEnv を中核にし、Viewer は env.step(action) を呼ぶデバッグクライアント化。
-- Gymnasium互換追加: src/envs/fx_gym_env.py を実装し、reset/step/action_space/observation_space を提供。
-- 性能改善: DataHandler はロード時に NumPy 配列へ変換し、ステップ中は高速な配列アクセス。
-- プラグイン機構追加: src/core/features.py と src/core/rewards.py を導入。
-- ConfigLoader拡張: src/utils/config_loader.py で YAML / JSON 設定ファイル読み込みと CLI override を統合。
-- ルックアヘッド防止: src/core/data_handler.py の get_ohlc_window(step, ...) で範囲外stepアクセス時に例外を送出し、未来参照を禁止。
-- TradingEngine拡張: open_long/open_short/close にスプレッド考慮を導入し、uPnL/実現損益と証拠金維持率判定を追加。
-- Feature/Reward整備: OHLCWindowFeature と PnLDeltaReward を強化し、Gym統合前でも単体ロジック検証しやすい形へ整理。
+`src` 配下のコード読解結果に基づく、現状整理と次アクションです。
 
-## 残課題（次の改善候補）
+## 現状で実装済みのポイント
 
-- 1) 取引コストモデルの追加拡張
-  - 既存の spread に加え、commission/slippage を RewardFunction へ統合する。
+- `FxGymEnv` は Gymnasium 契約（`reset/step/action_space/observation_space`）を満たす
+- 終了条件は「データ末尾」または「マージンコール」
+- `max_episode_steps` による `truncated` 判定に対応
+- `DataHandler` はCSVを正規化し、NumPy配列へ変換して高速アクセス
+- `TradingEngine` はスプレッド・実現/含み損益・維持率・勝率を管理
+- `OHLCWindowFeature` / `PnLDeltaReward` による差し替え可能な構造
+- ViewerはEnvクライアントとして分離され、手動/自動ステップが可能
 
-- 2) 観測量の拡張
-  - OHLC以外にテクニカル指標やボラティリティ特徴を FeatureExtractor へ追加する。
+## 優先度付きの改善候補
 
-- 3) 早期終了条件の追加拡張
-  - 既存の証拠金維持率割れ判定に加え、ドローダウン閾値を terminated 条件へ統合する。
+### 優先度 High
 
-- 4) 自動テストの強化
-  - Envの reset/step 契約、Observation shape/dtype、Reward の境界条件をテスト化。
+1. 自動テストの整備
+   - 対象: `src/envs/fx_gym_env.py`, `src/core/data_handler.py`, `src/core/engine.py`
+   - 目的: 仕様変更時のリグレッション防止
+   - 最低限の観点:
+     - `reset/step` の返却型・shape・dtype
+     - 終了/打ち切り条件（末尾到達、マージンコール、max_episode_steps）
+     - `get_ohlc_window` の境界動作（lookahead防止）
 
-- 5) 設定スキーマの明文化
-  - JSON/YAML で許可するキーと型を docs に明記し、設定ミスを減らす。
+2. 設定バリデーションの強化
+   - 対象: `src/utils/config_loader.py`
+   - 目的: 実行前に設定ミスを明確化
+   - 例: `csv_path` 存在確認、`window_size` とデータ長の整合、未知キーの検出
 
-## 実装チェックリスト（現時点）
-- [x] Gymnasium互換 env を追加
-- [x] Feature/Reward プラグイン機構を追加
-- [x] DataHandler を NumPy中心へ改修
-- [x] Viewer を Env駆動デバッグ化
-- [x] ConfigLoader を YAML / JSON 両対応へ拡張
-- [x] get_ohlc_window に未来参照防止（例外送出）を実装
-- [x] TradingEngine にスプレッド計算・uPnL・維持率割れ判定を実装
-- [x] Observation/Reward のコアロジックを更新
-- [ ] テストコード整備（次フェーズ）
+### 優先度 Medium
+
+3. コストモデル拡張
+   - 対象: `src/core/engine.py`, `src/core/rewards.py`
+   - 目的: 学習環境を実運用に近づける
+   - 例: commission、slippage、時間帯別スプレッド
+
+4. 観測特徴量の拡張
+   - 対象: `src/core/features.py`
+   - 目的: 方策学習に有効な情報量を増やす
+   - 例: リターン系列、ボラティリティ、移動平均乖離
+
+5. エピソード結果の永続化
+   - 対象: `src/main.py`（headless）
+   - 目的: 実験比較を容易にする
+   - 例: 1エピソードごとのメトリクスをCSV/JSONLへ保存
+
+### 優先度 Low
+
+6. Viewerの操作性改善
+   - 対象: `src/visualization/viewer.py`, `src/visualization/chart.py`
+   - 例: 再生速度切替、表示項目ON/OFF、スクリーンショット保存
+
+## 推奨する次の実装順
+
+1. テスト基盤を追加（pytest）
+2. ConfigLoaderの入力検証を強化
+3. コストモデルと報酬の拡張
+4. 特徴量拡張と学習実験ログ整備

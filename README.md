@@ -1,79 +1,138 @@
 # Fx-Trading-Env
 
-> Gymnasium互換のFX取引シミュレーション環境を中心に、ヘッドレス実行とデバッグ可視化を分離した学習用プロジェクト。
+> Gymnasium互換のFX取引シミュレーション環境。学習向けのヘッドレス実行と、デバッグ用Viewerを分離したプロジェクトです。
 
 ---
 
 ## Overview
 
-このプロジェクトは、USD/JPYのOHLC時系列データを使って、強化学習向けに取引環境を1ステップずつ進められるようにした実装です。中核は `FxGymEnv` で、`reset` / `step` / `action_space` / `observation_space` を備えたGymnasium互換APIとして構成されています。
+このリポジトリは USD/JPY の OHLC 時系列データを使って、強化学習エージェントが `reset` / `step` ベースで取引を進められる環境を提供します。
+中核は `FxGymEnv` で、データ読み込み・取引ロジック・観測生成・報酬計算・可視化を責務分離しています。
 
-設計上は、データ読み込み、売買ロジック、観測生成、報酬計算、可視化をモジュール分離しています。特に `DataHandler` でCSVを初期ロード時にNumPy化し、ステップループでのオーバーヘッドを抑えている点と、Viewerを環境本体から独立させている点が実装済みの特徴です。
+### 実装済みの主な機能
 
-### Features
-
-* Gymnasium互換環境 `src/envs/fx_gym_env.py` を実装（4アクション: hold/long/short/close）
-* `src/core/data_handler.py` でCSVを検証・正規化し、NumPy配列ベースで高速アクセス
-* `src/core/features.py` と `src/core/rewards.py` による特徴量/報酬の差し替え可能な構造
+- Gymnasium互換環境 `src/envs/fx_gym_env.py`
+  - 4アクション: `hold(0)` / `long(1)` / `short(2)` / `close(3)`
+  - 終了条件: データ末尾到達 または 証拠金維持率割れ（マージンコール）
+  - 打ち切り条件: `max_episode_steps` 到達時に `truncated=True`
+- `src/core/data_handler.py`
+  - CSV列名を正規化（`<OPEN>` のような形式にも対応）
+  - 読み込み時に NumPy 配列へ変換し、ステップループを高速化
+  - 範囲外stepアクセス時に例外を送出し、lookaheadを防止
+- `src/core/engine.py`
+  - スプレッド考慮の約定（ask/bid）
+  - `balance` / `equity` / `unrealized_pnl` / `win_rate` / `maintenance_margin_ratio` を計算
+- プラグイン構造
+  - 観測: `OHLCWindowFeature`
+  - 報酬: `PnLDeltaReward`
+- `src/visualization/viewer.py`
+  - 環境本体とは独立したデバッグクライアント
+  - キー入力による手動ステップと、Spaceキーによる自動再生（1秒間隔）
 
 ---
 
-## Demo
+## Requirements
 
-現時点ではREADME向けの静的デモ画像は未配置です。`--mode viewer` で起動すると、Matplotlib上でローソク足とポジション状態を確認できます。
+- Python 3.10+
+- 必須ライブラリ
+  - gymnasium
+  - numpy
+  - pandas
+  - matplotlib
+- 任意ライブラリ
+  - pyyaml（YAML設定ファイルを使う場合のみ）
+
+---
+
+## Installation
+
+```bash
+git clone <your-repo-url>
+cd fx-trading-env
+pip install gymnasium numpy pandas matplotlib pyyaml
+```
 
 ---
 
 ## Quick Start
 
-最短で動作確認するため、必要ライブラリを入れて `src/main.py` または `src/check.py` を実行します。
-
-### Requirements
-
-* 言語 / ランタイム: Python 3.10+
-* 必要ライブラリ: gymnasium, numpy, pandas, matplotlib
-* 任意ライブラリ: PyYAML（YAML設定ファイルを使う場合のみ）
-
-### Installation
-
 ```bash
-git clone <your-repo-url>
-cd fx-trading-env
-
-pip install gymnasium numpy pandas matplotlib pyyaml
-```
-
-### Run
-
-```bash
-# デバッグビューア起動
+# デバッグViewer起動
 python src/main.py --mode viewer
 
-# ヘッドレス実行（holdのみで100ステップ）
-python src/main.py --mode headless --steps 100
+# ヘッドレス実行（holdのみで200ステップ）
+python src/main.py --mode headless --steps 200
 
-# Gymnasium互換チェック
+# Gymnasium API互換チェック
 python src/check.py
+```
+
+設定ファイルを使う例:
+
+```bash
+python src/main.py --config config.yaml --mode viewer
+python src/check.py --config config.json --max-episode-steps 500
 ```
 
 ---
 
-## Usage
+## CLI Options
 
-`viewer` モードではキー入力でアクションを送り、`headless` モードでは画面なしで環境を進められます。
+### `src/main.py`
 
-### Example
+- `--config`: 設定ファイル（`.json` / `.yaml` / `.yml`）
+- `--csv`: OHLC CSVのパス（設定ファイルより優先）
+- `--window-size`: 観測窓サイズ
+- `--initial-step`: 起動時ステップ（`env.reset(options={"start_step": ...})`）
+- `--mode`: `viewer` または `headless`
+- `--steps`: `headless` モード時のステップ数
 
-```bash
-# Viewer の操作キー
-# right : holdして1ステップ進む
-# a     : longして1ステップ進む
-# z     : shortして1ステップ進む
-# x     : closeして1ステップ進む
-# home  : reset
+### `src/check.py`
+
+- `--config`
+- `--csv`
+- `--window-size`
+- `--max-episode-steps`: truncation動作を含めたチェックに利用可能
+
+---
+
+## Action / Viewer Key Map
+
+環境アクション:
+
+- `0`: hold
+- `1`: long（既存ポジションがあれば一度closeしてから建玉）
+- `2`: short（既存ポジションがあれば一度closeしてから建玉）
+- `3`: close
+
+Viewerキー:
+
+- `Right`: holdして1ステップ進む
+- `A`: longして1ステップ進む
+- `Z`: shortして1ステップ進む
+- `X`: closeして1ステップ進む
+- `Space`: hold自動再生のON/OFF（1秒間隔）
+- `Home`: reset
+
+---
+
+## Configuration
+
+`ConfigLoader` が読み込む設定キー:
+
+- `csv_path` (string)
+- `window_size` (int, > 0)
+- `initial_step` (int, >= 0)
+
+YAML例:
+
+```yaml
+csv_path: src/USDJPY_M5_202411130555_202512311810.csv
+window_size: 120
+initial_step: 120
 ```
 
-### Configuration
+JSON例:
 
 ```json
 {
@@ -83,26 +142,22 @@ python src/check.py
 }
 ```
 
-CLIオプション（`--csv` / `--window-size` / `--initial-step`）は設定ファイルより優先されます。
-
 ---
 
-## Tech Stack
+## `info` に含まれる主な指標
 
-実装済み機能で実際に使っている技術スタックです。
+`reset` / `step` が返す `info` には、次のような指標が含まれます。
 
-| Category       | Technology                     | Reason |
-| :------------- | :----------------------------- | :----- |
-| Runtime        | Python 3                       | Gymnasium環境とデータ処理を素早く実装できる |
-| RL Interface   | Gymnasium                      | `reset/step`契約に沿った環境定義ができる |
-| Data Handling  | pandas + NumPy                 | 読み込み時はpandas、ステップ時はNumPyで高速化 |
-| Visualization  | Matplotlib                     | デバッグ用途のローソク足表示とキー操作連携 |
+- `current_step`, `action`, `price`
+- `position_side`, `entry_mid_price`, `entry_price`
+- `balance`, `unrealized_pnl`, `maintenance_margin_ratio`, `is_margin_call`
+- `equity`, `episode_total_reward`
+- `episode_peak_equity`, `episode_max_drawdown`, `episode_max_drawdown_pct`
+- `closed_trades`, `winning_trades`, `losing_trades`, `win_rate`, `total_realized_pnl`
 
 ---
 
 ## Project Structure
-
-主要ディレクトリは、責務ごとに分離した構成です。
 
 ```text
 .
@@ -113,34 +168,23 @@ CLIオプション（`--csv` / `--window-size` / `--initial-step`）は設定フ
 │   ├── dependency.md
 │   └── recommendations.md
 ├── src/
-│   ├── main.py                  # エントリポイント（viewer/headless）
-│   ├── check.py                 # gymnasium.utils.env_checker 実行
-│   ├── USDJPY_M5_*.csv          # サンプルOHLCデータ
+│   ├── main.py
+│   ├── check.py
 │   ├── core/
-│   │   ├── data_handler.py      # CSVロードと時系列ウィンドウ取得
-│   │   ├── engine.py            # ポジション・損益・維持率判定
-│   │   ├── features.py          # 観測ベクトル生成
-│   │   └── rewards.py           # 報酬計算
+│   │   ├── data_handler.py
+│   │   ├── engine.py
+│   │   ├── features.py
+│   │   └── rewards.py
 │   ├── envs/
-│   │   └── fx_gym_env.py        # Gymnasium互換環境
+│   │   └── fx_gym_env.py
 │   ├── utils/
-│   │   └── config_loader.py     # YAML/JSON + CLI設定解決
+│   │   └── config_loader.py
 │   └── visualization/
-│       ├── chart.py             # チャート描画
-│       ├── controller.py        # キー入力処理
-│       └── viewer.py            # Envクライアント
+│       ├── chart.py
+│       ├── controller.py
+│       └── viewer.py
 └── README.md
 ```
-
----
-
-## Roadmap
-
-* [x] Gymnasium互換のFX環境（reset/step/action_space/observation_space）
-* [x] DataHandlerのNumPy最適化と未来参照防止
-* [x] Viewerを分離したデバッグ可視化
-* [ ] 自動テスト整備（Env契約・境界ケース）
-* [ ] 取引コストモデル拡張（commission/slippage）
 
 ---
 

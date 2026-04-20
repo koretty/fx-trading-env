@@ -1,28 +1,62 @@
 # Architecture Overview
 
-このリポジトリは Gymnasium 互換のヘッドレス環境を中核にし、可視化はデバッグクライアントとして分離した構成です。
+このリポジトリは、Gymnasium互換の環境 `FxGymEnv` を中心に、データ処理・取引ロジック・観測/報酬・可視化を分離した構成です。
+可視化（Viewer）はあくまでデバッグクライアントで、学習ループの主経路は RL Agent と Env のやり取りです。
 
-## モジュール一覧と役割
+## システム境界
 
-- src.main: エントリポイント。CLI解析、設定読み込み、FxGymEnv の組立て（csv_pathを渡して内部パーツを初期化）、必要に応じてデバッグViewer起動。
-- src.utils.config_loader: AppConfig と設定読み込みロジック（YAML/JSON + CLI優先解決）。
-- src.core.data_handler: CSV読み込み・正規化。読み込み時に NumPy 配列へ変換して高速アクセスAPIを提供。`get_ohlc_window` は範囲外stepで例外を送出し未来参照を禁止。
-- src.core.engine: ポジション状態管理、スプレッド考慮の約定、uPnL/実現損益、証拠金維持率判定。
-- src.core.features: Observation 生成プラグイン群（FeatureExtractor）。OHLC窓 + 口座/ポジション文脈を生成。
-- src.core.rewards: 報酬計算プラグイン群（RewardFunction）。PnL差分ベースで報酬を算出。
-- src.envs.fx_gym_env: Gymnasium互換環境。`__init__`で Engine / Feature / Reward / DataHandler を初期化し、reset/step/action_space/observation_space を提供。
-- src.visualization.chart: デバッグ描画のみ（NumPy入力）。
-- src.visualization.controller: キー入力を環境アクションへマッピング。
-- src.visualization.viewer: Env クライアント。キー操作時に env.step(action) を呼ぶデバッグUI。
+- 中核: `src/envs/fx_gym_env.py` (`reset` / `step` / `action_space` / `observation_space`)
+- 入力: OHLC CSV（`src/core/data_handler.py` がロード・正規化）
+- 出力: `observation`, `reward`, `terminated`, `truncated`, `info`
+- 任意UI: `src/visualization/viewer.py`（キー入力で `env.step(action)` を呼ぶ）
 
-## 設計原則
+## モジュール責務
 
-- 主従関係: 外部エージェントが env.step(action) を呼び、環境が進む。
-- 可視化の位置づけ: 学習本体から独立したオプショナルなデバッグ機能。
-- 性能: ステップループでは pandas ではなく NumPy を利用。
-- 拡張性: Feature/Reward を差し替え可能なプラグイン構造。
+- `src/main.py`
+  - CLI解析
+  - `ConfigLoader` で設定読み込み
+  - `FxGymEnv` を組み立てて、`headless` または `viewer` で実行
+- `src/check.py`
+  - `gymnasium.utils.env_checker.check_env` によるAPI互換検証
+- `src/utils/config_loader.py`
+  - JSON/YAML設定の読み込み
+  - CLI引数の優先適用
+  - `AppConfig(csv_path, window_size, initial_step)` を返却
+- `src/core/data_handler.py`
+  - CSV列名正規化、日時パース、OHLC数値化
+  - NumPy配列 (`_ohlc`, `_timestamps`, `_close`) を保持
+  - `step` 範囲外アクセス時の例外でlookaheadを防止
+- `src/core/engine.py`
+  - `PositionState` 管理（`FLAT/LONG/SHORT`）
+  - スプレッド考慮の約定（longはask、shortはbid）
+  - 評価損益、実現損益、維持率、勝率などを算出
+- `src/core/features.py`
+  - `FeatureExtractor` プロトコル
+  - `OHLCWindowFeature` で固定長観測ベクトルを生成
+- `src/core/rewards.py`
+  - `RewardFunction` プロトコル
+  - `PnLDeltaReward` でPnL差分ベースの報酬を算出
+- `src/visualization/chart.py`
+  - ローソク足描画とステータスパネル表示
+- `src/visualization/controller.py`
+  - キー入力とアクション実行の橋渡し
+- `src/visualization/viewer.py`
+  - Envクライアント
+  - 手動ステップと自動再生（Space切替、1秒間隔）
 
-## クラス図（概要）
+## 実行モデル
+
+1. `main.py` / `check.py` が設定を読み込み、`FxGymEnv` を初期化
+2. `FxGymEnv.__init__` で `DataHandler`, `TradingEngine`, `FeatureExtractor`, `RewardFunction` を準備
+3. `reset(options={"start_step": ...})` で開始ステップを確定し、観測と `info` を返す
+4. `step(action)` で以下を実行
+   - 事前価格で `prev_unrealized` を取得
+   - アクション適用（`long/short` は内部で既存ポジションを一度クローズ）
+   - ステップ進行、終了/打ち切り判定
+   - 報酬計算、エピソード指標更新、観測/`info` 返却
+5. Viewer利用時は `Viewer` が `env.step()` / `env.reset()` を呼び、`Chart` が描画
+
+## クラス図（実装準拠）
 
 ```mermaid
 classDiagram
@@ -32,54 +66,70 @@ classDiagram
         +int initial_step
     }
     class ConfigLoader {
-        +load(...)
+        +load(...): AppConfig
     }
 
     class DataHandler {
-        -Path _csv_path
-        -DataFrame _data
-        -ndarray _ohlc
-        -ndarray _timestamps
-        +load()
-        +get_price(step)
-        +get_ohlc_window(step, window_size, pad)
-        +get_timestamps_window(step, window_size, pad)
+        +load(): DataFrame
+        +get_price(step): float
+        +get_ohlc_row(step): ndarray
+        +get_ohlc_window(current_step, window_size, pad): tuple
+        +get_timestamps_window(current_step, window_size, pad): tuple
+    }
+
+    class PositionState {
+        +side: PositionSide
+        +entry_mid_price: float | None
+        +entry_price: float | None
+        +units: float
     }
 
     class TradingEngine {
         +open_long(price, units)
         +open_short(price, units)
-        +close(price)
-        +get_status(current_price)
-        +unrealized_pnl(current_price)
-        +maintenance_margin_ratio(current_price)
-        +is_margin_call(current_price)
+        +close(price): float
+        +unrealized_pnl(current_price): float
+        +maintenance_margin_ratio(current_price): float
+        +is_margin_call(current_price): bool
+        +get_status(current_price): dict
     }
 
     class FeatureExtractor {
         <<Protocol>>
         +observation_space
-        +extract(data_handler, current_step, window_size, engine)
+        +extract(data_handler, current_step, window_size, engine): ndarray
     }
     class OHLCWindowFeature
 
     class RewardFunction {
         <<Protocol>>
         +reset()
-        +compute(prev_unrealized, next_unrealized, action, terminated, truncated)
+        +compute(prev_unrealized, next_unrealized, action, terminated, truncated): float
     }
     class PnLDeltaReward
 
-    class FxGymEnv {
-        +reset(seed, options)
-        +step(action)
-        +render()
-        +action_space
-        +observation_space
+    class EnvDebugFrame {
+        +ohlc_window: ndarray
+        +timestamps: ndarray
+        +current_step: int
+        +window_start_index: int
+        +status: dict
     }
 
+    class FxGymEnv {
+        +ACTION_HOLD
+        +ACTION_LONG
+        +ACTION_SHORT
+        +ACTION_CLOSE
+        +reset(seed, options)
+        +step(action)
+        +get_debug_frame(): EnvDebugFrame
+        +render(): EnvDebugFrame
+    }
+
+    class ChartStyle
     class Chart {
-        +render(visible_ohlc, visible_timestamps, current_step, window_start, status)
+        +render(visible_ohlc, visible_timestamps, current_step_global, window_start_index, status)
     }
     class Controller {
         +on_key_press(event)
@@ -89,20 +139,25 @@ classDiagram
         +redraw()
     }
 
-    ConfigLoader --> AppConfig : produces
-    FxGymEnv --> DataHandler : uses
-    FxGymEnv --> TradingEngine : uses
-    FxGymEnv --> FeatureExtractor : uses
-    FxGymEnv --> RewardFunction : uses
+    ConfigLoader --> AppConfig
+    TradingEngine --> PositionState
     OHLCWindowFeature ..|> FeatureExtractor
     PnLDeltaReward ..|> RewardFunction
-    Viewer --> FxGymEnv : client calls step/reset
-    Viewer --> Chart : uses
-    Viewer --> Controller : uses
-    src.main ..> FxGymEnv : instantiates (with csv_path)
-    src.main ..> Viewer : optional debug
+
+    FxGymEnv --> DataHandler
+    FxGymEnv --> TradingEngine
+    FxGymEnv --> FeatureExtractor
+    FxGymEnv --> RewardFunction
+    FxGymEnv --> EnvDebugFrame
+
+    Viewer --> FxGymEnv
+    Viewer --> Chart
+    Viewer --> Controller
+    Chart --> ChartStyle
 ```
 
-補足:
-- `TradingEngine` は mid価格入力から bid/ask を導出し、スプレッドを内包した約定価格で評価します。
-- `FxGymEnv.step()` ではデータ末尾到達に加え、`is_margin_call` が `True` の場合も終了条件として扱います。
+## 設計上の要点
+
+- Envはヘッドレスで完結し、Viewerは後付け可能
+- ステップループではNumPyアクセスを使い、pandas依存を低減
+- Feature/Rewardはプロトコル化され、差し替え実験がしやすい
