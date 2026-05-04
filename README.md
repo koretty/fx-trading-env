@@ -31,19 +31,6 @@
 
 ---
 
-## Requirements
-
-- Python 3.10+
-- 必須ライブラリ
-  - gymnasium
-  - numpy
-  - pandas
-  - matplotlib
-- 任意ライブラリ
-  - pyyaml（YAML設定ファイルを使う場合のみ）
-
----
-
 ## Installation
 
 ```bash
